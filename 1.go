@@ -9,7 +9,14 @@ import (
 	"os"
 )
 
+type result struct {
+	URL     string
+	counter int
+	error   string
+}
+
 func main() {
+	client := &http.Client{}
 	ch := make(chan int, 5)
 	total := 0
 
@@ -17,31 +24,24 @@ func main() {
 
 	for scanner.Scan() {
 		go func() {
-			counter := 0
-			URL := scanner.Text()
+			r := result{URL: scanner.Text()}
+			response, err := client.Get(r.URL)
 
-			res, err := http.Get(URL)
 			if err != nil {
-				fmt.Println(err)
-				return
+				r.error = "Error: " + err.Error()
+			} else {
+				defer response.Body.Close()
+				date, err := ioutil.ReadAll(response.Body)
+				if err != nil {
+					r.error = "Error: " + err.Error()
+				} else {
+					r.counter = bytes.Count(date, []byte("Go"))
+				}
 			}
-
-			defer res.Body.Close()
-
-			date, err := ioutil.ReadAll(res.Body)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-
-			counter = bytes.Count(date, []byte("Go"))
-
-			fmt.Printf("Count for %s: %d\n", URL, counter)
-
-			ch <- counter
+			fmt.Printf("Count for %s: %d\t%s\n", r.URL, r.counter, r.error)
+			ch <- r.counter
 		}()
 		total += <-ch
 	}
-
 	fmt.Printf("Total: %d\n", total)
 }
