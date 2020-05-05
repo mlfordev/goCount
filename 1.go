@@ -37,6 +37,7 @@ func main() {
 	targetCh := make(chan Target)
 	resultCh := make(chan Target)
 	goCounter := 0
+	goMax := 5
 	goDone := make(chan bool)
 	done := make(chan bool)
 	total := 0
@@ -52,6 +53,10 @@ func main() {
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
+		if goCounter >= goMax {
+			<-goDone
+		}
+
 		go func() {
 			t := <-targetCh
 			resultCh <- countWords(t, client)
@@ -61,6 +66,10 @@ func main() {
 		t := Target{URL: scanner.Text()}
 		targetCh <- t
 		goCounter++
+	}
+
+	if goCounter > goMax {
+		goCounter = goMax
 	}
 
 	for i := 0; i < goCounter; i++ {
