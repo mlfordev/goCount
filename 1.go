@@ -9,39 +9,64 @@ import (
 	"os"
 )
 
-type result struct {
+type Target struct {
 	URL     string
 	counter int
 	error   string
 }
 
+func countWords(t Target, client *http.Client) Target {
+	response, err := client.Get(t.URL)
+
+	if err != nil {
+		t.error = "Error: " + err.Error()
+	} else {
+		defer response.Body.Close()
+		date, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			t.error = "Error: " + err.Error()
+		} else {
+			t.counter = bytes.Count(date, []byte("Go"))
+		}
+	}
+	return t
+}
+
 func main() {
 	client := &http.Client{}
-	ch := make(chan int, 5)
+	targetCh := make(chan Target)
+	resultCh := make(chan Target)
+	goCounter := 0
+	goDone := make(chan bool)
+	done := make(chan bool)
 	total := 0
 
-	scanner := bufio.NewScanner(os.Stdin)
+	go func() {
+		for t := range resultCh {
+			fmt.Printf("Count for %s: %d\t%s\n", t.URL, t.counter, t.error)
+			total += t.counter
+		}
+		fmt.Printf("Total: %d\n", total)
+		done <- true
+	}()
 
+	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		go func() {
-			r := result{URL: scanner.Text()}
-			response, err := client.Get(r.URL)
-
-			if err != nil {
-				r.error = "Error: " + err.Error()
-			} else {
-				defer response.Body.Close()
-				date, err := ioutil.ReadAll(response.Body)
-				if err != nil {
-					r.error = "Error: " + err.Error()
-				} else {
-					r.counter = bytes.Count(date, []byte("Go"))
-				}
-			}
-			fmt.Printf("Count for %s: %d\t%s\n", r.URL, r.counter, r.error)
-			ch <- r.counter
+			t := <-targetCh
+			resultCh <- countWords(t, client)
+			goDone <- true
 		}()
-		total += <-ch
+
+		t := Target{URL: scanner.Text()}
+		targetCh <- t
+		goCounter++
 	}
-	fmt.Printf("Total: %d\n", total)
+
+	for i := 0; i < goCounter; i++ {
+		<-goDone
+	}
+	close(resultCh)
+
+	<-done
 }
